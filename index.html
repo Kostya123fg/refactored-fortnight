@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Чат</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        :root {
+            --bg-page: #121212;
+            --bg-container: #1e1e1e;
+            --bg-chat: #2c2c2e;
+            --color-text: #e0e0e0;
+            --color-user: #0a84ff;
+            --color-assistant: #333;
+            --color-muted: #888;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-page);
+            color: var(--color-text);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            background-color: var(--bg-container);
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        }
+
+        h1 {
+            font-weight: 700;
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        h1::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -0.5rem;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(90deg, var(--color-user), var(--color-assistant));
+            border-radius: 2px;
+        }
+
+        #chatWindow {
+            background-color: var(--bg-chat);
+            border: 1px solid var(--color-muted);
+            border-radius: 12px;
+            height: 500px;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .bubble {
+            max-width: 70%;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            line-height: 1.4;
+            transition: background 0.3s, transform 0.2s, opacity 0.3s;
+            opacity: 0;
+            animation: bubbleFadeIn 0.4s forwards;
+        }
+
+        @keyframes bubbleFadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .bubble.user {
+            background-color: var(--color-user);
+            color: #fff;
+            align-self: flex-end;
+            border-bottom-right-radius: 0;
+        }
+
+        .bubble.assistant {
+            background-color: var(--color-assistant);
+            color: var(--color-text);
+            align-self: flex-start;
+            border-bottom-left-radius: 0;
+        }
+
+        #questionForm {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        #question {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 999px;
+            border: 1px solid var(--color-muted);
+            background-color: var(--bg-chat);
+            color: var(--color-text);
+        }
+
+        #question::placeholder {
+            color: var(--color-muted);
+        }
+
+        #question:focus {
+            outline: none;
+            border-color: var(--color-user);
+            box-shadow: 0 0 8px 2px rgba(10,134,255,0.5);
+        }
+
+        .btn-primary {
+            background-color: var(--color-user) !important;
+            border: none;
+            padding: 0 1.5rem;
+            border-radius: 999px;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn-primary:hover {
+            background-color: #0060c0 !important;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-chat);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--color-user);
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--color-assistant);
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <h1 class="mb-4 text-center">Чат</h1>
+        <div id="chatWindow" class="border rounded p-3 mb-3 bg-light" style="height: 500px; overflow-y: auto;"></div>
+        <form id="questionForm" class="input-group">
+            <input type="text" id="question" class="form-control" placeholder="Ваш вопрос..." required>
+            <button class="btn btn-primary" type="submit">Отправить</button>
+        </form>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script>
+        const chatWindow = document.getElementById('chatWindow');
+        document.getElementById('questionForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const questionInput = document.getElementById('question');
+            const question = questionInput.value;
+            appendMessage('user', question);
+            questionInput.value = '';
+            scrollChat();
+
+            const loadingId = appendLoading();
+            const response = await fetch('/ask', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question })
+            });
+            const data = await response.json();
+            removeLoading(loadingId);
+            const answer = data.answer || 'Ошибка получения ответа.';
+            appendMessage('assistant', answer);
+            scrollChat();
+            Prism.highlightAll();
+        });
+
+        function appendMessage(sender, text) {
+            const wrapper = document.createElement('div');
+            wrapper.classList.add('d-flex', sender === 'user' ? 'justify-content-end' : 'justify-content-start', 'mb-3');
+            const bubbleEl = document.createElement('div');
+            bubbleEl.classList.add('bubble', sender);
+            bubbleEl.innerHTML = marked.parse(text);
+            wrapper.appendChild(bubbleEl);
+            chatWindow.appendChild(wrapper);
+        }
+
+        function appendLoading() {
+            const id = 'loading-' + Date.now();
+            const wrapper = document.createElement('div');
+            wrapper.classList.add('d-flex', 'justify-content-start', 'mb-3');
+            const bubbleEl = document.createElement('div');
+            bubbleEl.id = id;
+            bubbleEl.classList.add('bubble', 'assistant', 'text-muted');
+            bubbleEl.textContent = 'Ассистент печатает...';
+            wrapper.appendChild(bubbleEl);
+            chatWindow.appendChild(wrapper);
+            return id;
+        }
+
+        function removeLoading(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        function scrollChat() {
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+    </script>
+</body>
+</html> 
